@@ -1,0 +1,35 @@
+# Core AI/ML Framework
+langchain==0.3.3
+langchain_community==0.3.2
+langchain_openai==0.2.2
+langgraph==0.2.35
+
+# Vector Store
+# Note: faiss-cpu 1.9.0 only supports Python 3.9-3.12
+# For Python 3.13+, use latest available version (may require building from source)
+faiss-cpu==1.9.0; python_version < "3.13"
+faiss-cpu>=1.8.0; python_version >= "3.13"
+
+# Web Framework & Server
+fastapi==0.115.2
+uvicorn[standard]>=0.30.0
+langserve[all]>=0.3.0
+httpx-sse==0.4.0
+httpx>=0.27.0
+
+# Frontend
+streamlit==1.39.0
+
+# Twitter/X Scraping
+twikit>=1.7.0
+playwright>=1.40.0
+
+# LLM APIs
+openai>=1.0.0
+zhipuai>=2.0.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# Configuration & Environment
+python-dotenv>=1.0.0
