@@ -129,45 +129,8 @@ graph TB
 ### Quick Start (All Platforms)
 ```bash
 # Clone repository
-git clone https://github.com/fufankeji/XAgent.git
+git clone https://github.com/peige-guo/twitter_trend_agent.git
 cd XAgent
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file and add your DeepSeek API Key
-# Get your API key from: https://platform.deepseek.com/
-# DEEPSEEK_API_KEY=your_key_here
-# model=deepseek-chat
-
-# Run server (Terminal 1)
-python app/server.py
-
-# Run client (Terminal 2)
-streamlit run app/client.py
-```
-
-### macOS Setup (Recommended)
-
-#### Option 1: One-Click Launcher (Easiest) 🚀
-```bash
-# Just run the launcher script!
-./run_macos.sh
-```
-The script will automatically:
-- Check and create virtual environment
-- Install all dependencies
-- Launch server and client in separate Terminal tabs
-- Open the browser automatically
-
-#### Option 2: Manual Setup with uv (Fast)
-```bash
-# Install uv (fast Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Create virtual environment
-uv venv
-source .venv/bin/activate
 
 # Install dependencies (10-100x faster than pip!)
 uv pip install -r requirements.txt
