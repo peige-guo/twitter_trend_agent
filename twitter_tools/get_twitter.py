@@ -5,9 +5,14 @@
 
 import json
 import asyncio
+import os
 from typing import List, Dict
 from datetime import datetime
 import re
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 try:
     from twikit import Client
@@ -29,20 +34,46 @@ class TwitterScraper:
     
     async def initialize(self):
         """
-        Initialize the Twitter client.
-        Note: Twikit can work without authentication for public searches.
+        Initialize the Twitter client with cookie-based authentication.
+        Uses saved cookies if available, otherwise logs in with credentials from .env file.
         """
         if not TWIKIT_AVAILABLE:
             raise ImportError("twikit library is not available")
         
-        # For basic scraping, we don't need to login
-        # If you want to login, uncomment and provide credentials:
-        # await self.client.login(
-        #     auth_info_1='YOUR_USERNAME',
-        #     auth_info_2='YOUR_EMAIL',
-        #     password='YOUR_PASSWORD'
-        # )
-        pass
+        cookie_file = 'twitter_cookies.json'
+        
+        try:
+            # Check if cookie file exists and try to load it
+            if os.path.exists(cookie_file):
+                self.client.load_cookies(cookie_file)
+                print("✓ Loaded existing Twitter session cookies")
+            else:
+                # First time: Login with credentials from environment variables
+                username = os.getenv('TWITTER_USERNAME')
+                email = os.getenv('TWITTER_EMAIL')
+                password = os.getenv('TWITTER_PASSWORD')
+                
+                if not all([username, email, password]):
+                    raise ValueError(
+                        "Twitter credentials not found in .env file. "
+                        "Please add TWITTER_USERNAME, TWITTER_EMAIL, and TWITTER_PASSWORD"
+                    )
+                
+                print("Logging in to Twitter (first time setup)...")
+                await self.client.login(
+                    auth_info_1=username,
+                    auth_info_2=email,
+                    password=password
+                )
+                
+                # Save cookies for future use
+                self.client.save_cookies(cookie_file)
+                print("✓ Successfully logged in and saved session cookies")
+                
+        except Exception as e:
+            print(f"✗ Twitter authentication failed: {str(e)}")
+            print("Please check your credentials in the .env file")
+            raise
     
     async def search_tweets(self, keyword: str, count: int = 20) -> List[Dict]:
         """

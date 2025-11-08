@@ -138,10 +138,15 @@ uv pip install -r requirements.txt
 # Install Playwright browsers
 playwright install
 
-# Create .env file
+# Create .env file (or copy from .env.example and edit)
 cat > .env << EOF
 DEEPSEEK_API_KEY=your_key_here
 model=deepseek-chat
+
+# Twitter/X Authentication (REQUIRED for scraping)
+TWITTER_USERNAME=your_twitter_username
+TWITTER_EMAIL=your_email@example.com
+TWITTER_PASSWORD=your_twitter_password
 EOF
 
 # Run server (Terminal 1)
