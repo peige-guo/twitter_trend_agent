@@ -29,9 +29,11 @@ def create_parser_components(api_key: str, model: str):
     retriever = DocumentLoader()
 
     # Create LLM model instance, configured to use DeepSeek model with specified temperature parameter
+    print(f"Initializing LLM with model: {model}")
+    print(f"Base URL: https://api.deepseek.com")
     llm = ChatOpenAI(
         api_key=api_key,
-        base_url="https://api.deepseek.com",
+        base_url="https://api.deepseek.com/v1",  # Add /v1 endpoint
         model=model,
         temperature=0
     )
