@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Author: Adapted for X (Twitter) scraping
-# Date: 2025-11-05
+# Author: Adapted for X (Twitter) API v2
+# Date: 2025-11-08
 
 import json
 import asyncio
@@ -15,132 +15,184 @@ from dotenv import load_dotenv
 load_dotenv()
 
 try:
-    from twikit import Client
-    TWIKIT_AVAILABLE = True
+    import tweepy
+    TWEEPY_AVAILABLE = True
 except ImportError:
-    TWIKIT_AVAILABLE = False
-    print("Warning: twikit not installed. Please install with: pip install twikit")
+    TWEEPY_AVAILABLE = False
+    print("Warning: tweepy not installed. Please install with: pip install tweepy")
 
 
-class TwitterScraper:
+class TwitterAPIClient:
     """
-    A class to scrape X (Twitter) data using twikit library.
+    A class to interact with X (Twitter) data using Twitter API v2.
     """
     
     def __init__(self):
         self.client = None
-        if TWIKIT_AVAILABLE:
-            self.client = Client('en-US')
+        self.api_initialized = False
     
-    async def initialize(self):
+    def initialize(self):
         """
-        Initialize the Twitter client with cookie-based authentication.
-        Uses saved cookies if available, otherwise logs in with credentials from .env file.
-        """
-        if not TWIKIT_AVAILABLE:
-            raise ImportError("twikit library is not available")
+        Initialize the Twitter API client with Bearer Token authentication.
+        Uses Twitter API v2 credentials from .env file.
         
-        cookie_file = 'twitter_cookies.json'
+        Note: You need to have a Twitter Developer account and create an app at:
+        https://developer.twitter.com/en/portal/dashboard
+        """
+        if not TWEEPY_AVAILABLE:
+            raise ImportError("tweepy library is not available")
+        
+        # Get credentials from environment variables
+        bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
+        
+        # Alternative: Use API keys (v1.1 style authentication)
+        api_key = os.getenv('TWITTER_API_KEY')
+        api_secret = os.getenv('TWITTER_API_SECRET')
+        access_token = os.getenv('TWITTER_ACCESS_TOKEN')
+        access_token_secret = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
         
         try:
-            # Check if cookie file exists and try to load it
-            if os.path.exists(cookie_file):
-                self.client.load_cookies(cookie_file)
-                print("✓ Loaded existing Twitter session cookies")
-            else:
-                # First time: Login with credentials from environment variables
-                username = os.getenv('TWITTER_USERNAME')
-                email = os.getenv('TWITTER_EMAIL')
-                password = os.getenv('TWITTER_PASSWORD')
-                
-                if not all([username, email, password]):
-                    raise ValueError(
-                        "Twitter credentials not found in .env file. "
-                        "Please add TWITTER_USERNAME, TWITTER_EMAIL, and TWITTER_PASSWORD"
-                    )
-                
-                print("Logging in to Twitter (first time setup)...")
-                await self.client.login(
-                    auth_info_1=username,
-                    auth_info_2=email,
-                    password=password
+            # Prefer Bearer Token for API v2 (simpler, read-only access)
+            if bearer_token:
+                print("✓ Using Bearer Token authentication for Twitter API v2")
+                self.client = tweepy.Client(
+                    bearer_token=bearer_token,
+                    wait_on_rate_limit=True
                 )
-                
-                # Save cookies for future use
-                self.client.save_cookies(cookie_file)
-                print("✓ Successfully logged in and saved session cookies")
-                
+            # Fallback to OAuth 1.0a with API keys
+            elif all([api_key, api_secret, access_token, access_token_secret]):
+                print("✓ Using OAuth 1.0a authentication for Twitter API")
+                self.client = tweepy.Client(
+                    consumer_key=api_key,
+                    consumer_secret=api_secret,
+                    access_token=access_token,
+                    access_token_secret=access_token_secret,
+                    wait_on_rate_limit=True
+                )
+            else:
+                raise ValueError(
+                    "Twitter API credentials not found in .env file.\n"
+                    "Please add either:\n"
+                    "  - TWITTER_BEARER_TOKEN (recommended for read-only access), or\n"
+                    "  - TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, "
+                    "and TWITTER_ACCESS_TOKEN_SECRET\n\n"
+                    "Get your credentials at: https://developer.twitter.com/en/portal/dashboard"
+                )
+            
+            self.api_initialized = True
+            print("✓ Twitter API client initialized successfully")
+            
         except Exception as e:
-            print(f"✗ Twitter authentication failed: {str(e)}")
-            print("Please check your credentials in the .env file")
+            print(f"✗ Twitter API authentication failed: {str(e)}")
             raise
     
-    async def search_tweets(self, keyword: str, count: int = 20) -> List[Dict]:
+    def search_tweets(self, keyword: str, count: int = 20) -> List[Dict]:
         """
-        Search for tweets by keyword.
+        Search for tweets by keyword using Twitter API v2.
         
         Args:
             keyword (str): The search keyword
-            count (int): Number of tweets to fetch
+            count (int): Number of tweets to fetch (max 100 per request)
             
         Returns:
             List[Dict]: List of tweet data dictionaries
         """
-        if not self.client:
-            return []
+        if not self.client or not self.api_initialized:
+            raise RuntimeError("Twitter API client not initialized. Call initialize() first.")
         
         try:
+            # Use Twitter API v2 search_recent_tweets
+            # Tweet fields to retrieve
+            tweet_fields = [
+                'id', 'text', 'author_id', 'created_at',
+                'public_metrics', 'entities', 'lang'
+            ]
+            
+            # User fields to retrieve
+            user_fields = ['id', 'name', 'username']
+            
+            # Expansions to get additional data
+            expansions = ['author_id']
+            
             # Search for tweets
-            tweets = await self.client.search_tweet(keyword, 'Latest', count=count)
+            response = self.client.search_recent_tweets(
+                query=keyword,
+                max_results=min(count, 100),  # API limit is 100
+                tweet_fields=tweet_fields,
+                user_fields=user_fields,
+                expansions=expansions
+            )
+            
+            if not response.data:
+                print(f"No tweets found for keyword: {keyword}")
+                return []
+            
+            # Create a user lookup dictionary
+            users = {}
+            if response.includes and 'users' in response.includes:
+                for user in response.includes['users']:
+                    users[user.id] = user
             
             tweet_list = []
-            for tweet in tweets:
+            for tweet in response.data:
+                # Get user information
+                user = users.get(tweet.author_id)
+                author_name = user.name if user else 'Unknown'
+                author_username = user.username if user else 'unknown'
+                
+                # Get public metrics
+                metrics = tweet.public_metrics if hasattr(tweet, 'public_metrics') else {}
+                
+                # Extract hashtags and mentions from entities
+                hashtags = []
+                mentions = []
+                if hasattr(tweet, 'entities') and tweet.entities:
+                    if 'hashtags' in tweet.entities:
+                        hashtags = [f"#{tag['tag']}" for tag in tweet.entities['hashtags']]
+                    if 'mentions' in tweet.entities:
+                        mentions = [f"@{mention['username']}" for mention in tweet.entities['mentions']]
+                
                 tweet_data = {
-                    "tweet_id": getattr(tweet, 'id', ''),
-                    "author": getattr(tweet, 'user', {}).name if hasattr(tweet, 'user') else 'Unknown',
-                    "author_username": getattr(tweet, 'user', {}).screen_name if hasattr(tweet, 'user') else 'unknown',
-                    "author_id": getattr(tweet, 'user', {}).id if hasattr(tweet, 'user') else '',
-                    "text": getattr(tweet, 'text', ''),
-                    "created_at": getattr(tweet, 'created_at', ''),
-                    "likes": getattr(tweet, 'favorite_count', 0),
-                    "retweets": getattr(tweet, 'retweet_count', 0),
-                    "replies": getattr(tweet, 'reply_count', 0),
-                    "views": getattr(tweet, 'view_count', 0),
-                    "tweet_url": f"https://x.com/{getattr(tweet, 'user', {}).screen_name if hasattr(tweet, 'user') else 'i'}/status/{getattr(tweet, 'id', '')}",
+                    "tweet_id": str(tweet.id),
+                    "author": author_name,
+                    "author_username": author_username,
+                    "author_id": str(tweet.author_id),
+                    "text": tweet.text,
+                    "created_at": tweet.created_at.isoformat() if hasattr(tweet, 'created_at') else datetime.now().isoformat(),
+                    "likes": metrics.get('like_count', 0),
+                    "retweets": metrics.get('retweet_count', 0),
+                    "replies": metrics.get('reply_count', 0),
+                    "views": metrics.get('impression_count', 0),  # Note: impression_count may require elevated access
+                    "tweet_url": f"https://x.com/{author_username}/status/{tweet.id}",
+                    "hashtags": hashtags,
+                    "mentions": mentions
                 }
-                
-                # Extract hashtags
-                hashtags = re.findall(r'#\w+', tweet_data['text'])
-                tweet_data['hashtags'] = hashtags
-                
-                # Extract mentions
-                mentions = re.findall(r'@\w+', tweet_data['text'])
-                tweet_data['mentions'] = mentions
                 
                 tweet_list.append(tweet_data)
             
             return tweet_list
         
+        except tweepy.TweepyException as e:
+            print(f"Twitter API error: {str(e)}")
+            raise RuntimeError(f"Twitter API error: {str(e)}")
         except Exception as e:
             print(f"Error searching tweets: {str(e)}")
-            return []
+            raise RuntimeError(f"Error searching tweets: {str(e)}")
     
-    async def get_trending_topics(self) -> List[str]:
+    def get_trending_topics(self, woeid: int = 1) -> List[str]:
         """
         Get trending topics/hashtags.
         
+        Note: This requires API v1.1 endpoints which may need elevated access.
+        
+        Args:
+            woeid (int): Where On Earth ID (1 = Worldwide, 23424977 = United States)
+            
         Returns:
             List[str]: List of trending topics
         """
-        if not self.client:
-            return []
-        
-        try:
-            trends = await self.client.get_trends('worldwide')
-            return [trend.name for trend in trends[:10]]
-        except Exception as e:
-            print(f"Error getting trends: {str(e)}")
-            return []
+        print("Note: Trending topics require Twitter API v1.1 and may need elevated access")
+        return []
 
 
 async def process_tweet_results(tweets: List[Dict]) -> str:
@@ -184,29 +236,30 @@ async def process_tweet_results(tweets: List[Dict]) -> str:
     return json.dumps(processed_tweets, ensure_ascii=False)
 
 
-async def twitter_detail_pipeline(keywords: List[str], page: int = 1) -> List[Dict]:
+async def twitter_detail_pipeline(keywords: List[str], page: int = 1, count: int = 20) -> List[Dict]:
     """
-    Main pipeline to fetch and process Twitter data.
+    Main pipeline to fetch and process Twitter data using official API.
     
     Args:
         keywords (List[str]): List of keywords to search
-        page (int): Page number (for pagination, currently unused)
+        page (int): Page number (for pagination, currently unused in API v2)
+        count (int): Number of tweets to fetch per keyword (default: 20, max: 100)
         
     Returns:
         List[Dict]: List of dictionaries with keyword and processed data
     
     Raises:
-        RuntimeError: If Twitter access is unavailable
+        RuntimeError: If Twitter API access is unavailable
     """
-    scraper = TwitterScraper()
+    client = TwitterAPIClient()
     
-    if not TWIKIT_AVAILABLE:
-        raise RuntimeError("No access to X: twikit library is not installed. Please install with: pip install twikit")
+    if not TWEEPY_AVAILABLE:
+        raise RuntimeError("No access to X: tweepy library is not installed. Please install with: pip install tweepy")
     
     try:
-        await scraper.initialize()
+        client.initialize()
     except Exception as e:
-        raise RuntimeError(f"No access to X: Authentication failed - {str(e)}")
+        raise RuntimeError(f"No access to X: API authentication failed - {str(e)}")
     
     all_results = []
     
@@ -215,7 +268,7 @@ async def twitter_detail_pipeline(keywords: List[str], page: int = 1) -> List[Di
         
         try:
             # Fetch tweets for this keyword
-            tweets = await scraper.search_tweets(keyword, count=20)
+            tweets = client.search_tweets(keyword, count=count)
             
             if not tweets:
                 print(f"No tweets found for keyword: {keyword}")
@@ -234,14 +287,14 @@ async def twitter_detail_pipeline(keywords: List[str], page: int = 1) -> List[Di
             continue
     
     if not all_results:
-        raise RuntimeError("No access to X: Failed to retrieve any tweets. Twitter may be blocking requests.")
+        raise RuntimeError("No access to X: Failed to retrieve any tweets. Please check your API credentials and rate limits.")
     
     print(f"all_results: {json.dumps(all_results, indent=4, ensure_ascii=False)}")
     return all_results
 
 
 if __name__ == '__main__':
-    # Test the scraper
+    # Test the API client
     async def main():
         try:
             results = await twitter_detail_pipeline(keywords=["AI trends", "machine learning"], page=1)
@@ -250,4 +303,3 @@ if __name__ == '__main__':
             print(f"Error: {e}")
     
     asyncio.run(main())
-
