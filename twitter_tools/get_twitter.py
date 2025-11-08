@@ -194,19 +194,19 @@ async def twitter_detail_pipeline(keywords: List[str], page: int = 1) -> List[Di
         
     Returns:
         List[Dict]: List of dictionaries with keyword and processed data
+    
+    Raises:
+        RuntimeError: If Twitter access is unavailable
     """
     scraper = TwitterScraper()
     
     if not TWIKIT_AVAILABLE:
-        # Fallback: return mock data for testing
-        print("Warning: Using mock data as twikit is not available")
-        return await create_mock_data(keywords)
+        raise RuntimeError("No access to X: twikit library is not installed. Please install with: pip install twikit")
     
     try:
         await scraper.initialize()
     except Exception as e:
-        print(f"Failed to initialize scraper: {str(e)}")
-        return await create_mock_data(keywords)
+        raise RuntimeError(f"No access to X: Authentication failed - {str(e)}")
     
     all_results = []
     
@@ -233,86 +233,21 @@ async def twitter_detail_pipeline(keywords: List[str], page: int = 1) -> List[Di
             print(f"Error processing keyword '{keyword}': {str(e)}")
             continue
     
+    if not all_results:
+        raise RuntimeError("No access to X: Failed to retrieve any tweets. Twitter may be blocking requests.")
+    
     print(f"all_results: {json.dumps(all_results, indent=4, ensure_ascii=False)}")
-    return all_results
-
-
-async def create_mock_data(keywords: List[str]) -> List[Dict]:
-    """
-    Create mock Twitter data for testing purposes.
-    
-    Args:
-        keywords (List[str]): List of keywords
-        
-    Returns:
-        List[Dict]: Mock tweet data
-    """
-    all_results = []
-    
-    for keyword in keywords:
-        mock_tweets = [
-            {
-                "tweet_id": "1234567890",
-                "author": "Tech Enthusiast",
-                "author_username": "tech_lover",
-                "author_id": "123456",
-                "text": f"Really excited about {keyword}! This is going to change everything. #AI #Technology",
-                "created_at": datetime.now().isoformat(),
-                "likes": 145,
-                "retweets": 23,
-                "replies": 12,
-                "views": 1250,
-                "tweet_url": "https://x.com/tech_lover/status/1234567890",
-                "hashtags": ["#AI", "#Technology"],
-                "mentions": []
-            },
-            {
-                "tweet_id": "1234567891",
-                "author": "AI Researcher",
-                "author_username": "ai_research",
-                "author_id": "123457",
-                "text": f"New developments in {keyword} are fascinating. Check out this paper! #MachineLearning #Research",
-                "created_at": datetime.now().isoformat(),
-                "likes": 234,
-                "retweets": 45,
-                "replies": 18,
-                "views": 2300,
-                "tweet_url": "https://x.com/ai_research/status/1234567891",
-                "hashtags": ["#MachineLearning", "#Research"],
-                "mentions": []
-            },
-            {
-                "tweet_id": "1234567892",
-                "author": "Developer",
-                "author_username": "dev_life",
-                "author_id": "123458",
-                "text": f"Just implemented {keyword} in my project. The results are amazing! 🚀 #Coding #DevLife",
-                "created_at": datetime.now().isoformat(),
-                "likes": 89,
-                "retweets": 15,
-                "replies": 7,
-                "views": 890,
-                "tweet_url": "https://x.com/dev_life/status/1234567892",
-                "hashtags": ["#Coding", "#DevLife"],
-                "mentions": []
-            }
-        ]
-        
-        real_data = await process_tweet_results(mock_tweets)
-        
-        all_results.append({
-            "keyword": keyword,
-            "real_data": real_data
-        })
-    
     return all_results
 
 
 if __name__ == '__main__':
     # Test the scraper
     async def main():
-        results = await twitter_detail_pipeline(keywords=["AI trends", "machine learning"], page=1)
-        print(json.dumps(results, indent=2, ensure_ascii=False))
+        try:
+            results = await twitter_detail_pipeline(keywords=["AI trends", "machine learning"], page=1)
+            print(json.dumps(results, indent=2, ensure_ascii=False))
+        except RuntimeError as e:
+            print(f"Error: {e}")
     
     asyncio.run(main())
 

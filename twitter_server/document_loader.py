@@ -84,9 +84,19 @@ class DocumentLoader:
 
         Returns:
             List[Document]: Retrieved documents, or empty list if no documents found.
+        
+        Raises:
+            RuntimeError: If X (Twitter) access fails
         """
         print(f"Starting real-time scraping of X (Twitter) data")
-        docs = await self.get_docs(keywords, page)
+        
+        try:
+            docs = await self.get_docs(keywords, page)
+        except RuntimeError as e:
+            # Propagate the "no access to X" error message
+            print(f"Error: {str(e)}")
+            raise RuntimeError(str(e))
+        
         print(f"Received X (Twitter) data: {docs}")
         print("-------------------------")
         

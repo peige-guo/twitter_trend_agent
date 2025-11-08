@@ -17,9 +17,17 @@ class EdgeGraph:
         print("---Entering document-question relevance judgment---")
 
         filtered_documents = state["documents"]
+        retry_count = state.get("retry_count", 0)
+        
+        # Maximum retry limit
+        MAX_RETRIES = 3
 
         if not filtered_documents:
             print("---Decision: All retrieved documents are irrelevant to question, transform query---")
+            # Check retry limit before transforming query
+            if retry_count >= MAX_RETRIES:
+                print(f"---Maximum retry limit ({MAX_RETRIES}) reached. Proceeding to generate response with available information.---")
+                return "generate"
             return "transform_query"
         else:
 

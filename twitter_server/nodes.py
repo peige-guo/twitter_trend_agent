@@ -34,9 +34,16 @@ class GraphNodes:
         retry_count = state.get("retry_count", 0)
 
         # Execute retrieval
-        documents = await self.retriever.get_retriever(keywords=[question], page=1)
-        print(f"Retrieved Docs: {documents}")
-        return {"documents": documents, "input": question, "retry_count": retry_count}
+        try:
+            documents = await self.retriever.get_retriever(keywords=[question], page=1)
+            print(f"Retrieved Docs: {documents}")
+            return {"documents": documents, "input": question, "retry_count": retry_count}
+        except RuntimeError as e:
+            # Handle "no access to X" error
+            print(f"Retrieval failed: {str(e)}")
+            error_message = str(e)
+            # Return empty documents with error information
+            return {"documents": [], "input": question, "retry_count": retry_count, "error": error_message}
 
     def generate(self, state):
         """
@@ -54,6 +61,13 @@ class GraphNodes:
         question = state["input"]
         documents = state["documents"]
         retry_count = state.get("retry_count", 0)
+        error_message = state.get("error", None)
+
+        # Handle error from retrieval (no access to X)
+        if error_message:
+            print(f"---Error detected: {error_message}---")
+            generation = f"I apologize, but I couldn't access X (Twitter) to retrieve information. Error: {error_message}"
+            return {"documents": documents, "input": question, "generation": generation, "retry_count": retry_count}
 
         # Handle empty documents list
         if not documents:

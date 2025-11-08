@@ -72,8 +72,31 @@ async def create_vector_store(docs, store_path: Optional[str] = None) -> FAISS:
 
 
 async def get_retriever(keywords: List[str], page: int):
+    """
+    Get a retriever from documents loaded from X (Twitter).
+    
+    Args:
+        keywords (List[str]): Keywords to search for
+        page (int): Page number for pagination
+        
+    Returns:
+        Retriever or None if access to X fails
+        
+    Raises:
+        RuntimeError: If X (Twitter) access fails
+    """
     loader = DocumentLoader()
-    docs = await loader.get_docs(keywords=keywords, page=page)
+    
+    try:
+        docs = await loader.get_docs(keywords=keywords, page=page)
+    except RuntimeError as e:
+        print(f"Failed to get documents: {str(e)}")
+        raise
+    
+    if not docs:
+        print("No documents retrieved")
+        return None
+        
     vector_store = await create_vector_store(docs)
     if hasattr(vector_store, 'as_retriever'):
         # retriever = vector_store.as_retriever()
@@ -86,4 +109,11 @@ async def get_retriever(keywords: List[str], page: int):
 if __name__ == '__main__':
     import asyncio
 
-    asyncio.run(get_retriever(["AI trends"], 1))
+    async def main():
+        try:
+            retriever = await get_retriever(["AI trends"], 1)
+            print(f"Retriever created: {retriever}")
+        except RuntimeError as e:
+            print(f"Error: {e}")
+    
+    asyncio.run(main())
