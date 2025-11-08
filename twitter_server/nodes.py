@@ -29,11 +29,14 @@ class GraphNodes:
         """
         print("---Node: Starting tweet retrieval---")
         question = state["input"]
+        
+        # Initialize retry_count if not present
+        retry_count = state.get("retry_count", 0)
 
         # Execute retrieval
         documents = await self.retriever.get_retriever(keywords=[question], page=1)
         print(f"Retrieved Docs: {documents}")
-        return {"documents": documents, "input": question}
+        return {"documents": documents, "input": question, "retry_count": retry_count}
 
     def generate(self, state):
         """
@@ -50,17 +53,18 @@ class GraphNodes:
 
         question = state["input"]
         documents = state["documents"]
+        retry_count = state.get("retry_count", 0)
 
         # Handle empty documents list
         if not documents:
             print("---No documents available, generating response without context---")
             generation = "I apologize, but I couldn't retrieve any relevant information from X (Twitter) at this time. This might be due to API limitations or network issues. Please try again later or rephrase your question."
-            return {"documents": documents, "input": question, "generation": generation}
+            return {"documents": documents, "input": question, "generation": generation, "retry_count": retry_count}
 
         # RAG-based generation
         generation = self.generate_chain.invoke({"context": documents, "input": question})
         print(f"Generated response: {generation}")
-        return {"documents": documents, "input": question, "generation": generation}
+        return {"documents": documents, "input": question, "generation": generation, "retry_count": retry_count}
 
     def grade_documents(self, state):
         """
@@ -76,11 +80,12 @@ class GraphNodes:
         print("---Node: Checking if retrieved tweets are relevant to the question---")
         question = state["input"]
         documents = state["documents"]
+        retry_count = state.get("retry_count", 0)
 
         # Handle empty documents list
         if not documents:
             print("---No documents to grade, returning empty list---")
-            return {"documents": [], "input": question}
+            return {"documents": [], "input": question, "retry_count": retry_count}
 
         filtered_docs = []
 
@@ -94,7 +99,7 @@ class GraphNodes:
                 print("---Evaluation result: Retrieved tweet is not relevant to question---")
                 continue
 
-        return {"documents": filtered_docs, "input": question}
+        return {"documents": filtered_docs, "input": question, "retry_count": retry_count}
 
     def transform_query(self, state):
         """
@@ -110,8 +115,11 @@ class GraphNodes:
 
         question = state["input"]
         documents = state["documents"]
+        retry_count = state.get("retry_count", 0) + 1
+        
+        print(f"---Retry attempt: {retry_count}/3---")
 
         # Question rewriting
         better_question = self.question_rewriter.invoke({"input": question})
         print(f"Rewritten question: {better_question}")
-        return {"documents": documents, "input": better_question}
+        return {"documents": documents, "input": better_question, "retry_count": retry_count}

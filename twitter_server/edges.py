@@ -41,6 +41,10 @@ class EdgeGraph:
         question = state["input"]
         documents = state["documents"]
         generation = state["generation"]
+        retry_count = state.get("retry_count", 0)
+        
+        # Maximum retry limit
+        MAX_RETRIES = 3
 
         score = self.hallucination_grader.invoke({"documents": documents, "generation": generation})
         grade = score["score"]
@@ -56,7 +60,15 @@ class EdgeGraph:
                 return "useful"
             else:
                 print("---Judgment: Generated response is not relevant to input question---")
+                # Check retry limit before looping
+                if retry_count >= MAX_RETRIES:
+                    print(f"---Maximum retry limit ({MAX_RETRIES}) reached. Ending workflow with current response.---")
+                    return "useful"  # End with current response instead of infinite loop
                 return "not useful"
         else:
             print("---Judgment: Generated response is not related to retrieved documents, model entered hallucination state---")
+            # Check retry limit before looping
+            if retry_count >= MAX_RETRIES:
+                print(f"---Maximum retry limit ({MAX_RETRIES}) reached. Ending workflow with current response.---")
+                return "useful"  # End with current response instead of infinite loop
             return "not supported"

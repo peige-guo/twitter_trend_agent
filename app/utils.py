@@ -29,11 +29,12 @@ def create_parser_components(api_key: str, model: str):
     retriever = DocumentLoader()
 
     # Create LLM model instance, configured to use DeepSeek model with specified temperature parameter
+    # Using /v1 endpoint for better OpenAI compatibility as per DeepSeek documentation
     print(f"Initializing LLM with model: {model}")
-    print(f"Base URL: https://api.deepseek.com")
+    print(f"Base URL: https://api.deepseek.com/v1")
     llm = ChatOpenAI(
         api_key=api_key,
-        base_url="https://api.deepseek.com/v1",  # Add /v1 endpoint
+        base_url="https://api.deepseek.com/v1",  # Using /v1 for OpenAI compatibility
         model=model,
         temperature=0
     )
@@ -42,6 +43,7 @@ def create_parser_components(api_key: str, model: str):
     generate_chain = create_generate_chain(llm)
 
     # Initialize grader instance for creating and managing various grading tools
+    # Note: Relying on prompt engineering for JSON output instead of response_format parameter
     grader = GraderUtils(llm)
 
     # Create grader for evaluating relevance of retrieved documents to user questions
