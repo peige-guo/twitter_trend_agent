@@ -147,6 +147,9 @@ model=deepseek-chat
 TWITTER_USERNAME=your_twitter_username
 TWITTER_EMAIL=your_email@example.com
 TWITTER_PASSWORD=your_twitter_password
+
+# Optional: use a reviewed TweetClaw JSON export as source context
+TWEETCLAW_SOURCE_FILE=/absolute/path/to/tweetclaw-export.json
 EOF
 
 # Run server (Terminal 1)
@@ -156,6 +159,18 @@ python app/server.py
 streamlit run app/client.py
 ```
 
+### Optional TweetClaw Source Context
+
+Set `TWEETCLAW_SOURCE_FILE` to a local TweetClaw JSON export when you want the
+agent to analyze reviewed X/Twitter source packets without calling the live
+Twitter API during a run. This keeps the LangGraph, FAISS, and response
+generation flow unchanged while giving the retriever reproducible source
+context for demos, tests, or approval-gated analysis.
+
+The file can contain a JSON array of tweet rows or an object with `tweets`,
+`results`, `items`, `data`, or `records`. Rows are normalized into the same
+document format used by the Twitter API pipeline, including author, text, URL,
+created time, engagement counts, hashtags, and mentions.
 
 
 

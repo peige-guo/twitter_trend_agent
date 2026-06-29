@@ -6,7 +6,7 @@
 import json
 import asyncio
 import os
-from typing import List, Dict
+from typing import Any, List, Dict
 from datetime import datetime
 import re
 from dotenv import load_dotenv
@@ -236,6 +236,157 @@ async def process_tweet_results(tweets: List[Dict]) -> str:
     return json.dumps(processed_tweets, ensure_ascii=False)
 
 
+def _tweetclaw_rows_from_payload(payload: Any) -> List[Dict]:
+    """
+    Extract tweet-like rows from a TweetClaw JSON export or source packet.
+    """
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("tweets", "results", "items", "data", "records"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+        if isinstance(value, dict):
+            nested = _tweetclaw_rows_from_payload(value)
+            if nested:
+                return nested
+
+    nested_rows = []
+    for value in payload.values():
+        if isinstance(value, (dict, list)):
+            nested_rows.extend(_tweetclaw_rows_from_payload(value))
+    return nested_rows
+
+
+def _tweetclaw_text(row: Dict) -> str:
+    for key in ("text", "content", "full_text", "tweet_text", "body"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return json.dumps(row, ensure_ascii=False)
+
+
+def _tweetclaw_author(row: Dict) -> Dict:
+    author = row.get("author") or row.get("user") or row.get("account") or {}
+    if isinstance(author, str):
+        return {"name": author, "username": author.lstrip("@")}
+    if isinstance(author, dict):
+        return author
+    return {}
+
+
+def _tweetclaw_metric(row: Dict, *keys: str) -> int:
+    metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+    public_metrics = row.get("public_metrics") if isinstance(row.get("public_metrics"), dict) else {}
+    for source in (row, metrics, public_metrics):
+        for key in keys:
+            value = source.get(key)
+            if isinstance(value, int):
+                return value
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
+    return 0
+
+
+def _tweetclaw_url(row: Dict, username: str) -> str:
+    for key in ("tweet_url", "url", "link"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    tweet_id = row.get("tweet_id") or row.get("id") or row.get("id_str")
+    if tweet_id and username:
+        return f"https://x.com/{username}/status/{tweet_id}"
+    return "No Link"
+
+
+def _tweetclaw_created_at(row: Dict) -> str:
+    for key in ("created_at", "createdAt", "published_at", "timestamp", "date"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return datetime.now().isoformat()
+
+
+def _tweetclaw_tags(row: Dict, key: str) -> List[str]:
+    value = row.get(key)
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _tweetclaw_row_to_tweet(row: Dict) -> Dict:
+    author = _tweetclaw_author(row)
+    username = str(
+        author.get("username")
+        or author.get("screen_name")
+        or row.get("author_username")
+        or row.get("username")
+        or "unknown"
+    ).lstrip("@")
+
+    return {
+        "tweet_id": str(row.get("tweet_id") or row.get("id") or row.get("id_str") or ""),
+        "author": author.get("name") or row.get("author_name") or username or "Unknown Author",
+        "author_username": username,
+        "author_id": str(author.get("id") or row.get("author_id") or ""),
+        "text": _tweetclaw_text(row),
+        "created_at": _tweetclaw_created_at(row),
+        "likes": _tweetclaw_metric(row, "likes", "like_count", "favorite_count"),
+        "retweets": _tweetclaw_metric(row, "retweets", "retweet_count"),
+        "replies": _tweetclaw_metric(row, "replies", "reply_count"),
+        "views": _tweetclaw_metric(row, "views", "view_count", "impression_count"),
+        "tweet_url": _tweetclaw_url(row, username),
+        "hashtags": _tweetclaw_tags(row, "hashtags"),
+        "mentions": _tweetclaw_tags(row, "mentions"),
+    }
+
+
+def _matches_keyword(tweet: Dict, keyword: str) -> bool:
+    haystack = json.dumps(tweet, ensure_ascii=False).lower()
+    return keyword.lower() in haystack
+
+
+async def tweetclaw_source_pipeline(keywords: List[str]) -> List[Dict]:
+    """
+    Load reviewed X/Twitter source context from a local TweetClaw JSON file.
+    """
+    source_file = os.getenv("TWEETCLAW_SOURCE_FILE")
+    if not source_file:
+        return []
+
+    try:
+        with open(source_file, "r", encoding="utf-8") as file:
+            payload = json.load(file)
+    except OSError as error:
+        raise RuntimeError(f"TweetClaw source file could not be read: {error}") from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"TweetClaw source file is not valid JSON: {error}") from error
+
+    rows = _tweetclaw_rows_from_payload(payload)
+    tweets = [_tweetclaw_row_to_tweet(row) for row in rows]
+    if not tweets:
+        raise RuntimeError("TweetClaw source file did not contain tweet rows.")
+
+    all_results = []
+    for keyword in keywords:
+        matching_tweets = [tweet for tweet in tweets if _matches_keyword(tweet, keyword)]
+        selected_tweets = matching_tweets or tweets
+        real_data = await process_tweet_results(selected_tweets)
+        all_results.append({
+            "keyword": keyword,
+            "real_data": real_data
+        })
+
+    return all_results
+
+
 async def twitter_detail_pipeline(keywords: List[str], page: int = 1, count: int = 20) -> List[Dict]:
     """
     Main pipeline to fetch and process Twitter data using official API.
@@ -251,6 +402,11 @@ async def twitter_detail_pipeline(keywords: List[str], page: int = 1, count: int
     Raises:
         RuntimeError: If Twitter API access is unavailable
     """
+    tweetclaw_results = await tweetclaw_source_pipeline(keywords)
+    if tweetclaw_results:
+        print("Using TweetClaw source file for X/Twitter context")
+        return tweetclaw_results
+
     client = TwitterAPIClient()
     
     if not TWEEPY_AVAILABLE:
